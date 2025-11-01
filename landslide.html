@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Bản đồ nguy cơ sạt lở & lũ quét — Huế & Đà Nẵng</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%233b82f6'/%3E%3Ctext x='32' y='39' font-size='28' text-anchor='middle' fill='white' font-family='Arial'%3ELS%3C/text%3E%3C/svg%3E" />
+  <link rel="alternate icon" href="data:image/x-icon;," />
+
+  <!-- OpenLayers + Tailwind -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v7.5.2/ol.css" />
+  <script src="https://cdn.jsdelivr.net/npm/ol@v7.5.2/dist/ol.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- PapaParse (CSV) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0f172a; --text:#e5e7eb; --muted:#94a3b8;
+    }
+    /* Responsive base font sizes */
+    @media (min-width: 1024px){ body{ font-size: 18px; } }
+    @media (max-width: 640px){ body{ font-size: 14px; } }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      color:var(--text); background:var(--bg);
+    }
+    .overlay{
+      position:fixed; background:rgba(17,24,39,.9);
+      border:1px solid rgba(30,41,59,.8); border-radius:12px;
+      backdrop-filter: blur(4px);
+    }
+    /* Bottom bar layout (desktop 80% width) */
+    .overlay-b{
+      left:50%; transform:translateX(-50%);
+      bottom:12px; padding:10px 12px;
+      display:flex; gap:12px; align-items:center;
+      width:80vw;
+    }
+    #chartArea{display:flex; flex-direction:column; gap:8px; width:100%}
+    #chartHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap}
+    #timeLabel{
+      font-variant-numeric:tabular-nums;
+      color:#fff; background:#3b82f6;
+      padding:8px 12px; border-radius:8px;
+      font-weight:bold;
+      box-shadow:0 4px 14px rgba(0,0,0,.25);
+      margin-left:auto; min-width:0; max-width:70%;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      text-align:right;
+    }
+    #chartWrap{
+      width:100%; height:140px; background:transparent;
+      border-radius:6px; overflow:hidden
+    }
+    #chartWrap canvas{width:100% !important; height:100% !important}
+    /* Play button */
+    .play{
+      width:44px; height:44px; border-radius:50%;
+      border:none; background:#111; color:#fff;
+      font-size:18px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center
+    }
+    .play:active{transform:scale(0.98)}
+
+    /* Legend */
+    .overlay-legend{ top:12px; left:12px; padding:0; width:230px }
+    .legend-header{
+      background:#3b82f6; color:#fff; font-weight:700; text-align:center;
+      padding:8px 10px; border-radius:12px 12px 0 0
+    }
+    .legend-body{
+      background:#dbeafe; color:#0b1220; padding:8px 10px 10px 10px;
+      border-radius:0 0 12px 12px
+    }
+    .legend-item{ display:flex; align-items:center; gap:10px; margin:8px 0 }
+    .legend-swatch{
+      display:inline-block; width:22px; height:14px; border-radius:4px;
+      border:1px solid rgba(0,0,0,.25)
+    }
+    .swatch-trungbinh{ background:#ffd21f }  /* yellow */
+    .swatch-cao{ background:#cf3f3c }       /* red */
+    .swatch-ratcao{ background:#8a2be2 }    /* purple */
+
+    @media (max-width: 768px) {
+      .overlay-b {
+        width: 100vw;
+        bottom: 0;
+        border-radius: 0;
+        padding: 8px;
+        gap: 8px;
+      }
+      #chartHeader { gap: 8px; flex-wrap:nowrap; }
+      #timeLabel { padding:6px 10px; font-size:12px; max-width:75%; }
+      .play{ width:40px; height:40px; font-size:16px; }
+    }
+    /* OpenLayers map container full-bleed */
+    #map{position:fixed; inset:0}
+    /* Legend responsive sizing */
+    .legend-body{ font-size:1rem }
+    @media (min-width:1024px){
+      .overlay-legend{ width: 24rem; }       /* bigger on desktop */
+      .legend-body{ font-size:1.1rem }
+    }
+    @media (max-width:640px){
+      .overlay-legend{ width: 13rem; }       /* smaller on mobile */
+      .legend-body{ font-size:0.8rem }
+    }
+
+    @media (min-width:1024px){ #timeLabel{ font-size: 1rem; } }
+    @media (max-width:640px){ #timeLabel{ font-size: 0.85rem; padding: 5px 8px; } }
+
+    /* Popup */
+    #popup{
+      position:fixed;
+      background:#fff;
+      color:#0b1220;
+      border:1px solid rgba(0,0,0,.2);
+      border-radius:8px;
+      max-width: 400px;
+    }
+    #popup .title{ font-weight:700; margin-bottom:4px }
+    #popup .meta{ color:#334155 }
+    /* Popup table */
+    #popup table{ width:100%; border-collapse:collapse; font-size:14px; color:#0b1220; }
+    #popup thead th{ background:#000; color:#fff; padding:6px 8px; text-align:left; border-radius:6px 6px 0 0; }
+    #popup td{ padding:6px 8px; vertical-align:top; border-bottom:1px solid rgba(0,0,0,.12); }
+    #popup tbody tr:last-child td{ border-bottom:none; }
+    #popup td:first-child{ white-space:nowrap; color:#334155; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Legend -->
+  <div id="legend" class="overlay overlay-legend shadow-lg">
+    <div class="legend-header">CHÚ GIẢI</div>
+    <div class="legend-body">
+      <div class="legend-item"><span class="legend-swatch swatch-trungbinh"></span><span>Cảnh báo mức trung bình</span></div>
+      <div class="legend-item"><span class="legend-swatch swatch-cao"></span><span>Cảnh báo mức cao</span></div>
+      <div class="legend-item"><span class="legend-swatch swatch-ratcao"></span><span>Cảnh báo mức rất cao</span></div>
+    </div>
+  </div>
+
+  <!-- Popup -->
+  <div id="popup" class="overlay shadow-xl" style="padding:8px 10px; left:auto; top:auto; display:none;">
+    <div id="popup-content" class="text-sm text-slate-900"></div>
+  </div>
+
+  <!-- Bottom playback + chart (no slider) -->
+  <div id="timebar" class="overlay overlay-b shadow-xl">
+    <div id="chartArea">
+      <div id="chartHeader">
+        <button id="btnPlay" class="play" title="Play/Pause">▶</button>
+        <span id="timeLabel">—</span>
+      </div>
+      <div id="chartWrap"><canvas id="timeChart"></canvas></div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Utilities ----------
+    const riskPriority = { "Rất cao": 3, "Cao": 2, "Trung bình": 1 };
+    // Legend colors (purple, red, yellow)
+    const riskColors  = { "Rất cao": "#8a2be2", "Cao": "#cf3f3c", "Trung bình": "#ffd21f", "None": "#0b1220" };
+
+    function normalizeVN(s) {
+      if (!s) return "";
+      return s.toString()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/gi, "d").replace(/\s+/g, " ")
+        .trim().toLowerCase();
+    }
+    function stripAdminPrefix(s) {
+      return s.replace(/^(phuong|p\.|xa|x\.|thi tran|tt\.)\s+/i, "").trim();
+    }
+    function normalizeName(s) { return stripAdminPrefix(normalizeVN(s)).replace(/\s+/g, " "); }
+
+    function worstRisk(r1, r2) {
+      const s1 = riskPriority[r1?.trim()] || 0;
+      const s2 = riskPriority[r2?.trim()] || 0;
+      const best = (s1 >= s2) ? r1 : r2;
+      return (riskPriority[best?.trim()] ? best.trim() : null);
+    }
+
+    // ---------- State ----------
+    let map, vectorLayer;
+    let geojsonData = null;
+    let featuresIndex = [];            // [{key,name,province,pop,feature}]
+    let times = [];                    // unique hour strings (CSV)
+    let timeIndex = 0;
+    let timeToRiskMap = new Map();     // time -> Map(key -> {risk, row})
+    let playing = false, playTimer = null;
+    let popupOverlay, pinnedFeature = null; // popup state
+
+    // ---------- Map (OpenLayers) ----------
+    function initMap() {
+      map = new ol.Map({
+        target: 'map',
+        layers: [
+          new ol.layer.Tile({ source: new ol.source.OSM() })
+        ],
+        view: new ol.View({
+          center: ol.proj.fromLonLat([107.6, 16.2]),
+          zoom: 8,
+          minZoom: 6,
+          maxZoom: 16
+        }),
+        controls: ol.control.defaults.defaults({ attribution: false })
+      });
+    }
+    initMap();
+
+    // Fixed lock extent (EPSG:4326): [minLon, minLat, maxLon, maxLat]
+    const LOCK_EXTENT_4326 = [
+      106.51710793167904, 14.881704293739297,
+      109.1409324676757,  16.591866534149656
+    ];
+    const LOCK_EXTENT_3857 = ol.proj.transformExtent(LOCK_EXTENT_4326, 'EPSG:4326', 'EPSG:3857');
+    // Add 20% padding around the lock extent (per side)
+    const __LOCK_W = ol.extent.getWidth(LOCK_EXTENT_3857);
+    const __LOCK_H = ol.extent.getHeight(LOCK_EXTENT_3857);
+    const __PAD_X = __LOCK_W * 0.20;
+    const __PAD_Y = __LOCK_H * 0.65;
+    const LOCK_EXTENT_PADDED_3857 = [
+      LOCK_EXTENT_3857[0] - __PAD_X,
+      LOCK_EXTENT_3857[1] - __PAD_Y,
+      LOCK_EXTENT_3857[2] + __PAD_X,
+      LOCK_EXTENT_3857[3] + __PAD_Y
+    ];
+
+    // Popup overlay
+    const popupEl = document.getElementById('popup');
+    popupOverlay = new ol.Overlay({
+      element: popupEl,
+      offset: [10, -10],
+      positioning: 'bottom-left',
+      stopEvent: false
+    });
+    map.addOverlay(popupOverlay);
+
+    // Auto-load local files
+    loadDefaultFiles();
+    async function loadDefaultFiles(){
+      try {
+        const gjRes = await fetch('./boundary.geojson', { cache: 'no-cache' });
+        if (gjRes.ok) onGeoJSONLoaded(await gjRes.json());
+        else console.warn('[AutoLoad] boundary.geojson not found');
+      } catch (e) { console.warn('[AutoLoad] boundary.geojson error:', e); }
+
+      try {
+        Papa.parse('./list.csv', {
+          download: true, header: true, skipEmptyLines: true,
+          complete: (res) => onCSVLoaded(res.data),
+          error: (err) => console.warn('[AutoLoad] list.csv error:', err)
+        });
+      } catch (e) { console.warn('[AutoLoad] list.csv error:', e); }
+    }
+
+    // ---------- Handlers ----------
+    function onGeoJSONLoaded(geo) {
+      geojsonData = geo;
+      buildFeatureIndex();
+      renderVectorLayer();
+      if (times.length) { updateVisualization(); updateChart(); }
+    }
+
+    function onCSVLoaded(rows) {
+      const allowed = new Set(["tp. hue", "tp. đà nẵng", "tp. da nang", "tp. huế"]);
+      const tset = new Set(); const tmp = new Map();
+
+      for (const r of rows) {
+        const t = (r.time || "").trim(); if (!t) continue;
+        const key = normalizeName(r["commune_name_2cap"]); if (!key) continue;
+        const p2 = normalizeName(r["provinceName_2cap"] || "");
+        if (!allowed.has(p2)) continue;
+
+        const risk = worstRisk(r["nguycosatlo"], r["nguycoluquet"]); if (!risk) continue;
+
+        tset.add(t);
+        if (!tmp.has(t)) tmp.set(t, new Map());
+        const m = tmp.get(t);
+        const prev = m.get(key);
+        if (!prev || (riskPriority[risk] > riskPriority[prev.risk])) m.set(key, { risk, row: r });
+      }
+
+      times = Array.from(tset.values()).sort((a,b) => new Date(a) - new Date(b));
+      timeToRiskMap = tmp;
+
+      // Initialize time
+      timeIndex = 0;
+      updateTimeLabel();
+
+      if (geojsonData) { updateVisualization(); updateChart(); }
+    }
+
+    // ---------- Build features index ----------
+    function buildFeatureIndex() {
+      featuresIndex = [];
+      if (!geojsonData) return;
+      const feats = geojsonData.type === "FeatureCollection" ? geojsonData.features : [];
+      for (const f of feats) {
+        const p = f.properties || {};
+        const name = p["Phường xã mới"] ?? p["phuong_xa_moi"] ?? p["phuong_xa"] ?? "";
+        const province = p["Tỉnh thành mới"] ?? p["tinh_thanh_moi"] ?? "";
+        const pop = Number(String(p["Dân số (người)"] ?? p["dan_so"] ?? "").replace(/[^\d]/g,'')) || 0;
+        const key = normalizeName(name);
+        featuresIndex.push({ key, name, province, pop, feature: f });
+      }
+    }
+
+    // ---------- Time label helpers ----------
+    const timeLabel = document.getElementById("timeLabel");
+    function formatHourLabel(ts){
+      // "YYYY-MM-DD HH:MM:SS" -> "Hh DD/MM" (no leading zero in hour)
+      if (!ts) return "—";
+      const [d,t] = ts.split(" "); if (!d||!t) return ts;
+      const [Y,M,D] = d.split("-").map(Number);
+      const [HH] = t.split(":").map(Number);
+      return `${HH}h ${String(D).padStart(2,'0')}/${String(M).padStart(2,'0')}`;
+    }
+    function parseParts(ts){
+      const [d,t] = (ts||"").split(" ");
+      if (!d || !t) return {Y:NaN,M:NaN,D:NaN,HH:NaN,mm:NaN,ss:NaN};
+      const [Y,M,D] = d.split("-").map(Number);
+      const [HH,mm,ss] = t.split(":").map(Number);
+      return {Y,M,D,HH,mm,ss};
+    }
+    function isMidnight(ts){
+      const {HH,mm,ss} = parseParts(ts);
+      return HH===0 && (mm||0)===0 && (ss||0)===0;
+    }
+    function formatDayLabel(ts){
+      const {D,M} = parseParts(ts);
+      if (isNaN(D) || isNaN(M)) return '';
+      return `${String(D).padStart(2,'0')}/${String(M).padStart(2,'0')}`;
+    }
+    function updateTimeLabel(){ timeLabel.textContent = formatHourLabel(times[timeIndex] || ""); }
+
+    // ---------- Play/Pause ----------
+    const btnPlay = document.getElementById("btnPlay");
+    btnPlay.addEventListener("click", () => {
+      if (!times.length) return;
+      playing = !playing;
+      btnPlay.textContent = playing ? "⏸" : "▶";
+      if (playing) {
+        playTimer = setInterval(() => {
+          if (timeIndex >= times.length - 1) timeIndex = -1;
+          timeIndex++;
+          updateTimeLabel(); updateVisualization(); updateChart();
+        }, 1000);
+      } else { clearInterval(playTimer); }
+    });
+
+    // ---------- Popup helpers ----------
+    function popupHTMLForFeature(feature){
+      const props = feature.getProperties() || {};
+      const name = props['Phường xã mới'] || '';
+      const province = props['Tỉnh thành mới'] || '';
+      const pop = props['Dân số (người)'] || '';
+      const key = normalizeName(name);
+      const curT = times[timeIndex];
+      const rec = (timeToRiskMap.get(curT) || new Map()).get(key);
+      const risk = rec?.risk || 'Không có dữ liệu';
+      return `
+        <table class="pop-table">
+          <thead>
+            <tr><th colspan="2">${name}</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Tỉnh/TP</td><td>${province}</td></tr>
+            <tr><td>Dân số</td><td>${Number(String(pop).replace(/[^\d]/g,'')||0).toLocaleString('vi-VN')} người</td></tr>
+            <tr><td>Nguy cơ</td><td><b>${risk}</b></td></tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    // ---------- Rendering (OpenLayers) ----------
+    function styleForFeature(feature){
+      const name = feature.get('Phường xã mới') || '';
+      const key = normalizeName(name);
+      const curT = times[timeIndex];
+      const riskMap = timeToRiskMap.get(curT) || new Map();
+      const rec = riskMap.get(key);
+      const risk = rec?.risk || 'None';
+      const color = riskColors[risk] || '#0b1220';
+      // add alpha: None = 0x40, others ~0xBF
+      const fill = new ol.style.Fill({ color: color + (risk==='None' ? '40' : 'BF') });
+      const stroke = new ol.style.Stroke({ color: risk==='None' ? '#334155' : '#0f172a', width: 1 });
+      return new ol.style.Style({ fill, stroke });
+    }
+
+    function renderVectorLayer(){
+      if (!geojsonData) return;
+      const format = new ol.format.GeoJSON();
+      const features = format.readFeatures(geojsonData, { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' });
+      const source = new ol.source.Vector({ features });
+      if (vectorLayer) { map.removeLayer(vectorLayer); }
+      vectorLayer = new ol.layer.Vector({ source, style: styleForFeature });
+      map.addLayer(vectorLayer);
+
+      // Fit & hard-lock to the fixed extent (Huế–Đà Nẵng) with 20% padding
+      map.getView().fit(LOCK_EXTENT_PADDED_3857, { padding: [20,20,20,20], duration: 0 });
+
+      const view = new ol.View({
+        center: ol.extent.getCenter(LOCK_EXTENT_PADDED_3857),
+        zoom: map.getView().getZoom(),
+        minZoom: 7,
+        maxZoom: 16,
+        extent: LOCK_EXTENT_PADDED_3857,
+        constrainOnlyCenter: false,   // hard lock: cannot pan outside
+        enableRotation: false
+      });
+      map.setView(view);
+
+      // Hover: show popup following pointer unless a feature is pinned
+      map.on('pointermove', (evt) => {
+        if (!vectorLayer) return;
+        if (map.hasFeatureAtPixel(evt.pixel)) {
+          const feature = map.forEachFeatureAtPixel(evt.pixel, f => f);
+          if (!feature) return;
+          if (!pinnedFeature) {
+            document.getElementById('popup-content').innerHTML = popupHTMLForFeature(feature);
+            popupOverlay.setPosition(evt.coordinate);
+            document.getElementById('popup').style.display = 'block';
+          }
+        } else {
+          if (!pinnedFeature) {
+            document.getElementById('popup').style.display = 'none';
+          }
+        }
+      });
+
+      // Click: pin/unpin
+      map.on('singleclick', (evt) => {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, f => f);
+        if (feature) {
+          pinnedFeature = feature;
+          document.getElementById('popup-content').innerHTML = popupHTMLForFeature(feature);
+          popupOverlay.setPosition(evt.coordinate);
+          document.getElementById('popup').style.display = 'block';
+        } else {
+          pinnedFeature = null;
+          document.getElementById('popup').style.display = 'none';
+        }
+      });
+    }
+
+    function updateVisualization() {
+      if (!vectorLayer) return;
+      vectorLayer.setStyle(styleForFeature);
+      // refresh pinned popup (if any) to reflect current time index
+      if (pinnedFeature) {
+        document.getElementById('popup-content').innerHTML = popupHTMLForFeature(pinnedFeature);
+      }
+    }
+
+    // ---------- Chart shading plugin (future shade + vertical marker) ----------
+    const timelineShading = {
+      id: 'timelineShading',
+      afterDatasetsDraw(chart){
+        const {ctx, chartArea, scales} = chart; if (!chartArea || !scales?.x) return;
+        const {left, top, right, bottom} = chartArea;
+        const x = scales.x; const idx = chart._curIndex ?? 0;
+        const xPos = x.getPixelForValue(idx);
+        ctx.save();
+        // Shade future region
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        const start = Math.max(xPos, left);
+        if (start < right) ctx.fillRect(start, top, right - start, bottom - top);
+        // Vertical marker
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xPos, top); ctx.lineTo(xPos, bottom); ctx.stroke();
+        ctx.restore();
+      }
+    };
+
+    function clampIndex(i){
+      if (!Array.isArray(times) || !times.length) return 0;
+      return Math.max(0, Math.min(times.length - 1, Math.round(i)));
+    }
+
+    // ---------- Chart (time series) ----------
+    let chart; // Chart.js instance
+
+    function buildSeriesForRisk(risk, metric){
+      const out = [];
+      for (const t of times) {
+        const riskMap = timeToRiskMap.get(t) || new Map();
+        let val = 0;
+        for (const f of featuresIndex) {
+          const rec = riskMap.get(f.key);
+          if ((rec?.risk || null) === risk) val += (metric === 'pop') ? (Number(f.pop)||0) : 1;
+        }
+        out.push(val);
+      }
+      return out;
+    }
+
+    function buildStacked(metric){
+      const order = ["Rất cao","Cao","Trung bình"]; // bottom -> top
+      const datasets = [];
+      for (const r of order) {
+        datasets.push({
+          key:r,
+          data: buildSeriesForRisk(r, metric),
+          color: riskColors[r]
+        });
+      }
+      return datasets;
+    }
+
+    function updateChart(){
+      if (!times.length || !featuresIndex.length) return;
+
+      const selectedRisk = 'Tất cả';
+      const metric = 'count'; // fixed: Số phường xã
+      const labels = times.map(formatHourLabel);
+
+      let datasets = [];
+      if (selectedRisk === "Tất cả") {
+        const stacks = buildStacked(metric); // [Rất cao, Cao, Trung bình]
+        const stackId = 'risk';
+        datasets = stacks.map((s, idx) => ({
+          label: s.key,
+          data: s.data,
+          tension: 0.25,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          borderColor: s.color,
+          backgroundColor: s.color + '66',
+          fill: idx === 0 ? 'origin' : '-1', // fill to previous dataset
+          stack: stackId,
+          order: idx + 1
+        }));
+      } else {
+        const data = buildSeriesForRisk(selectedRisk, metric);
+        const color = riskColors[selectedRisk] || '#2563eb';
+        datasets = [{
+          label: `${selectedRisk} — ${metric === 'pop' ? 'Dân số' : 'Số phường xã'}`,
+          data,
+          tension: 0.25,
+          pointRadius: 0,
+          borderWidth: 2,
+          borderColor: color,
+          backgroundColor: color + '33',
+          fill: true,
+          order: 1
+        }];
+      }
+
+      const ctx = document.getElementById('timeChart').getContext('2d');
+
+      if (!chart) {
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false }, // stacked tooltip
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                enabled: true,
+                callbacks: {
+                  label: (ctx) => {
+                    const v = ctx.parsed.y || 0;
+                    const name = ctx.dataset.label;
+                    return `${name}: ${v.toLocaleString('vi-VN')}`;
+                  }
+                }
+              },
+              filler: { propagate: true }
+            },
+            scales: {
+              x: {
+                position: 'bottom',
+                grid: { display: false },
+                ticks: {
+                  maxRotation: 0,
+                  autoSkip: false,
+                  font: { size: window.matchMedia('(max-width: 640px)').matches ? 10 : 12 },
+                  callback: (value, index) => {
+                    const ts = times[index];
+                    return isMidnight(ts) ? formatDayLabel(ts) : '';
+                  }
+                }
+              },
+              y: {
+                position: 'right',
+                beginAtZero: true,
+                stacked: true,
+                grid: { color: 'rgba(148,163,184,0.25)' },
+                ticks: {
+                  maxTicksLimit: 5,
+                  precision: 0,
+                  callback: function(value) { return value; }
+                }
+              }
+            }
+          },
+          plugins: [timelineShading]
+        });
+        attachChartDragHandlers();
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets = datasets;
+        chart.options.scales.x.ticks.autoSkip = false;
+        chart.options.scales.x.ticks.font = { size: window.matchMedia('(max-width: 640px)').matches ? 10 : 12 };
+        chart.options.scales.x.ticks.callback = (value, index) => {
+          const ts = times[index];
+          return isMidnight(ts) ? formatDayLabel(ts) : '';
+        };
+        chart.options.scales.y.stacked = true;
+        chart.update();
+      }
+
+      chart._curIndex = timeIndex;
+      chart.update();
+    }
+
+    // Drag on chart to scrub time (mouse & touch)
+    function attachChartDragHandlers(){
+      const canvas = document.getElementById('timeChart');
+      if (!canvas) return;
+      let dragging = false;
+
+      function evtToIndex(evt){
+        if (!chart || !chart.scales?.x) return timeIndex;
+        const rect = canvas.getBoundingClientRect();
+        const xpix = (evt.touches ? evt.touches[0].clientX : evt.clientX) - rect.left;
+        const scale = chart.scales.x;
+        let idx = scale.getValueForPixel(xpix); // category scale returns index
+        idx = clampIndex(idx);
+        return idx;
+      }
+
+      function applyIndex(idx){
+        timeIndex = idx;
+        updateTimeLabel();
+        updateVisualization();
+        updateChart();
+      }
+
+      canvas.addEventListener('mousedown', (e)=>{ dragging = true; applyIndex(evtToIndex(e)); });
+      canvas.addEventListener('mousemove', (e)=>{ if (dragging) applyIndex(evtToIndex(e)); });
+      window.addEventListener('mouseup', ()=>{ dragging = false; });
+
+      canvas.addEventListener('touchstart', (e)=>{ dragging = true; applyIndex(evtToIndex(e)); }, {passive:true});
+      canvas.addEventListener('touchmove', (e)=>{ if (dragging) applyIndex(evtToIndex(e)); }, {passive:true});
+      window.addEventListener('touchend', ()=>{ dragging = false; }, {passive:true});
+    }
+
+    // Responsive: update x-axis tick settings on viewport resize
+    window.addEventListener('resize', () => {
+      if (!chart) return;
+      chart.options.scales.x.ticks.autoSkip = false;
+      chart.options.scales.x.ticks.font = { size: window.matchMedia('(max-width: 640px)').matches ? 10 : 12 };
+      chart.update('none');
+    });
+  </script>
+</body>
+</html>
