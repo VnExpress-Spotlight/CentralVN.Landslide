@@ -247,8 +247,8 @@
 
     // Fixed lock extent (EPSG:4326): [minLon, minLat, maxLon, maxLat]
     const LOCK_EXTENT_4326 = [
-      106.5, 14.4,
-      109.2,  16.8
+      106.5, 14.35,
+      109.2,  16.75
     ];
     const LOCK_EXTENT_3857 = ol.proj.transformExtent(LOCK_EXTENT_4326, 'EPSG:4326', 'EPSG:3857');
     // Add 20% padding around the lock extent (per side)
