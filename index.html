@@ -65,7 +65,7 @@
       text-align:right;
     }
     #chartWrap{
-      width:100%; height:140px; background:transparent;
+      width:100%; height:100px; background:transparent;
       border-radius:6px; overflow:hidden
     }
     #chartWrap canvas{width:100% !important; height:100% !important}
@@ -79,7 +79,12 @@
     .play:active{transform:scale(0.98)}
 
     /* Legend */
-    .overlay-legend{ top:12px; left:12px; padding:0; width:230px }
+    .overlay-legend{
+      top:12px; left:12px; padding:0;
+      display:inline-block;
+      width:auto;                 /* shrink to fit content */
+      max-width:90vw;             /* never stretch too wide */
+    }
     .legend-header{
       background:#3b82f6; color:#fff; font-weight:700; text-align:center;
       padding:8px 10px; border-radius:12px 12px 0 0
@@ -108,17 +113,18 @@
       #chartHeader { gap: 8px; flex-wrap:nowrap; }
       #timeLabel { padding:6px 10px; font-size:10px; max-width:75%; }
       .play{ width:30px; height:30px; font-size:10px; }
+      #chartWrap{ height: 78px; }
     }
     /* OpenLayers map container full-bleed */
     #map{position:fixed; inset:0}
     /* Legend responsive sizing */
     .legend-body{ font-size:1rem }
     @media (min-width:1024px){
-      .overlay-legend{ width: 24rem; }       /* bigger on desktop */
+      .overlay-legend{ max-width: 24rem; }   /* cap width on desktop */
       .legend-body{ font-size:1.1rem }
     }
     @media (max-width:640px){
-      .overlay-legend{ width: 13rem; }       /* smaller on mobile */
+      .overlay-legend{ max-width: 13rem; }   /* cap width on mobile */
       .legend-body{ font-size:0.8rem }
     }
 
@@ -175,6 +181,13 @@
 
   <script>
     // ---------- Utilities ----------
+    // Flag the root element with a class when on mobile viewport
+    function updateMobileClass(){
+      const m = window.matchMedia('(max-width: 640px)').matches;
+      document.documentElement.classList.toggle('is-mobile', m);
+    }
+    updateMobileClass();
+    window.addEventListener('resize', updateMobileClass, { passive: true });
     const riskPriority = { "Rất cao": 3, "Cao": 2, "Trung bình": 1 };
     // Legend colors (purple, red, yellow)
     const riskColors  = { "Rất cao": "#8a2be2", "Cao": "#cf3f3c", "Trung bình": "#ffd21f", "None": "#0b1220" };
@@ -209,6 +222,12 @@
     let popupOverlay, pinnedFeature = null; // popup state
 
     // ---------- Map (OpenLayers) ----------
+    // Helpers for responsive padding on fit (mobile vs desktop)
+    function isMobile(){ return document.documentElement.classList.contains('is-mobile'); }
+    function getFitPadding(){
+      // [top, right, bottom, left] — give extra bottom room for the timeline bar on mobile
+      return isMobile() ? [16, 16, 180, 16] : [20, 20, 20, 20];
+    }
     function initMap() {
       map = new ol.Map({
         target: 'map',
@@ -415,8 +434,8 @@
       vectorLayer = new ol.layer.Vector({ source, style: styleForFeature });
       map.addLayer(vectorLayer);
 
-      // Fit & hard-lock to the fixed extent (Huế–Đà Nẵng) with 20% padding
-      map.getView().fit(LOCK_EXTENT_PADDED_3857, { padding: [20,20,20,20], duration: 0 });
+      // Fit & hard-lock to the fixed extent (Huế–Đà Nẵng) with responsive padding
+      map.getView().fit(LOCK_EXTENT_PADDED_3857, { padding: getFitPadding(), duration: 0 });
 
       const view = new ol.View({
         center: ol.extent.getCenter(LOCK_EXTENT_PADDED_3857),
@@ -428,6 +447,13 @@
         enableRotation: false
       });
       map.setView(view);
+
+      // Refit on resize to apply mobile/desktop padding appropriately
+      window.addEventListener('resize', () => {
+        try{
+          map.getView().fit(LOCK_EXTENT_PADDED_3857, { padding: getFitPadding(), duration: 0 });
+        }catch(e){}
+      }, { passive: true });
 
       // Hover: show popup following pointer unless a feature is pinned
       map.on('pointermove', (evt) => {
