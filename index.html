@@ -38,18 +38,26 @@
     /* Bottom bar layout (desktop 80% width, capped at 25% viewport height) */
     .overlay-b{
       left:50%; transform:translateX(-50%);
-      bottom:12px; padding:10px 12px;
+      bottom:6px; padding:6px 6px;
       display:flex; gap:12px; align-items:center;
       width:80vw;
       max-height:25vh;          /* cap at 25% of screen height */
       overflow:hidden;          /* prevent overflow beyond cap */
     }
     #chartArea{display:flex; flex-direction:column; gap:8px; width:100%}
-    #chartHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap}
+    #chartHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:4px;
+      flex-wrap:nowrap;
+      padding:4px 6px;       /* reduce padding */
+      height:30px;           /* make it shorter */
+    }
     #timeLabel{
       font-variant-numeric:tabular-nums;
       color:#fff; background:#3b82f6;
-      padding:8px 12px; border-radius:8px;
+      padding:6px 8px; border-radius:8px;
       font-weight:bold;
       box-shadow:0 4px 14px rgba(0,0,0,.25);
       margin-left:auto; min-width:0; max-width:70%;
@@ -63,9 +71,9 @@
     #chartWrap canvas{width:100% !important; height:100% !important}
     /* Play button */
     .play{
-      width:44px; height:44px; border-radius:50%;
+      width:30px; height:3-p0; border-radius:50%;
       border:none; background:#111; color:#fff;
-      font-size:18px; cursor:pointer;
+      font-size:15px; cursor:pointer;
       display:flex; align-items:center; justify-content:center
     }
     .play:active{transform:scale(0.98)}
@@ -98,8 +106,8 @@
         gap: 8px;
       }
       #chartHeader { gap: 8px; flex-wrap:nowrap; }
-      #timeLabel { padding:6px 10px; font-size:12px; max-width:75%; }
-      .play{ width:40px; height:40px; font-size:16px; }
+      #timeLabel { padding:6px 10px; font-size:10px; max-width:75%; }
+      .play{ width:30px; height:30px; font-size:10px; }
     }
     /* OpenLayers map container full-bleed */
     #map{position:fixed; inset:0}
@@ -114,8 +122,8 @@
       .legend-body{ font-size:0.8rem }
     }
 
-    @media (min-width:1024px){ #timeLabel{ font-size: 1rem; } }
-    @media (max-width:640px){ #timeLabel{ font-size: 0.85rem; padding: 5px 8px; } }
+    @media (min-width:1024px){ #timeLabel{ font-size: 0.85rem; } }
+    @media (max-width:640px){ #timeLabel{ font-size: 0.65rem; padding: 5px 8px; } }
 
     /* Popup */
     #popup{
@@ -220,14 +228,14 @@
 
     // Fixed lock extent (EPSG:4326): [minLon, minLat, maxLon, maxLat]
     const LOCK_EXTENT_4326 = [
-      106.51710793167904, 14.881704293739297,
-      109.1409324676757,  16.591866534149656
+      106.5, 14.4,
+      109.2,  16.8
     ];
     const LOCK_EXTENT_3857 = ol.proj.transformExtent(LOCK_EXTENT_4326, 'EPSG:4326', 'EPSG:3857');
     // Add 20% padding around the lock extent (per side)
     const __LOCK_W = ol.extent.getWidth(LOCK_EXTENT_3857);
     const __LOCK_H = ol.extent.getHeight(LOCK_EXTENT_3857);
-    const __PAD_X = __LOCK_W * 0.20;
+    const __PAD_X = __LOCK_W * 0.35;
     const __PAD_Y = __LOCK_H * 0.65;
     const LOCK_EXTENT_PADDED_3857 = [
       LOCK_EXTENT_3857[0] - __PAD_X,
