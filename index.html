@@ -35,12 +35,14 @@
       border:1px solid rgba(30,41,59,.8); border-radius:12px;
       backdrop-filter: blur(4px);
     }
-    /* Bottom bar layout (desktop 80% width) */
+    /* Bottom bar layout (desktop 80% width, capped at 25% viewport height) */
     .overlay-b{
       left:50%; transform:translateX(-50%);
       bottom:12px; padding:10px 12px;
       display:flex; gap:12px; align-items:center;
       width:80vw;
+      max-height:25vh;          /* cap at 25% of screen height */
+      overflow:hidden;          /* prevent overflow beyond cap */
     }
     #chartArea{display:flex; flex-direction:column; gap:8px; width:100%}
     #chartHeader{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap}
